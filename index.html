@@ -13,7 +13,6 @@
   --bg:#EBEDF4;--surface:#fff;--surface-alt:#F7F8FC;
   --border:rgba(0,0,0,0.08);--border-strong:rgba(0,0,0,0.14);
   --text:#1C2640;--text-2:#4A5878;--text-3:#8090B0;
-  --unsigned-dot:#B45309;
   --pending-dot:#E8502A;
   --done-dot:#15803D;
   --radius:6px;
@@ -34,12 +33,20 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:v
 .btn-sm i{font-size:13px}
 .btn-sm:disabled{opacity:.5;cursor:not-allowed}
 
-/* Views */
-#view-kanban{padding:1rem;display:block}
-#view-review{display:none;padding:1rem}
+/* Tabs */
+.tabbar{display:flex;gap:.25rem;padding:0 1.25rem;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:52px;z-index:30}
+.tab-btn{background:transparent;border:none;border-bottom:2px solid transparent;padding:.75rem 1rem;font-size:13px;font-weight:600;color:var(--text-3);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:.5rem;transition:color .15s,border-color .15s}
+.tab-btn:hover{color:var(--text-2)}
+.tab-btn.active{color:var(--navy);border-bottom-color:var(--coral)}
+.tab-sub{font-weight:400;font-size:11px;color:var(--text-3)}
+.tab-count{font-size:11px;font-weight:700;background:var(--bg);color:var(--text-2);padding:1px 7px;border-radius:20px;font-variant-numeric:tabular-nums}
+.tab-btn.active .tab-count{background:var(--coral-bg);color:var(--coral)}
 
-/* Kanban */
-.kanban{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+/* Views */
+#view-dashboard{display:block}
+#view-review{display:none;padding:1rem}
+.tab-panel{padding:1rem}
+.recent-note{font-size:12px;color:var(--text-2);background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:.625rem .875rem;margin-bottom:.875rem;line-height:1.5}
 
 /* Global loading overlay */
 .global-loading{display:none;flex-direction:column;align-items:center;justify-content:center;padding:4rem 1rem;gap:.75rem;color:var(--text-3)}
@@ -48,23 +55,18 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:v
 .global-error.show{display:flex}
 .global-error i{color:var(--coral);font-size:16px;flex-shrink:0;margin-top:1px}
 
-/* Columns */
-.col{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
-.col-head{padding:.75rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px}
-.col-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.col-name{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-2);flex:1}
-.col-badge{font-size:11px;font-weight:600;background:var(--bg);color:var(--text-3);padding:1px 7px;border-radius:20px;font-variant-numeric:tabular-nums}
-.col-body{padding:.625rem;display:flex;flex-direction:column;gap:.5rem;min-height:120px}
-.col-empty{font-size:12px;color:var(--text-3);text-align:center;padding:1.5rem .75rem}
+/* Grids */
+.pending-grid,.recent-grid{display:none;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.75rem}
+.pending-grid.show,.recent-grid.show{display:grid}
+.grid-empty{font-size:12px;color:var(--text-3);text-align:center;padding:2.5rem .75rem}
 
 /* Cards */
 .card{border:1px solid var(--border);border-radius:var(--radius);padding:.75rem;background:var(--surface);position:relative;overflow:hidden;transition:box-shadow .15s,opacity .3s}
 .card:hover{box-shadow:var(--shadow)}
 .card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
-.card.unsigned::before{background:var(--unsigned-dot)}
 .card.pending::before{background:var(--coral)}
 .card.done::before{background:var(--done-dot)}
-.card.done{opacity:.8}
+.card.done{opacity:.85}
 .card-fn{font-family:'SF Mono','Cascadia Code','Fira Mono',monospace;font-size:10.5px;color:var(--text-3);line-height:1.4;word-break:break-all;margin-bottom:.35rem}
 .card-co{font-size:13px;font-weight:600;color:var(--text);margin-bottom:.2rem}
 .card-co.placeholder{color:var(--text-3);font-weight:400;font-style:italic}
@@ -146,8 +148,17 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:v
   </div>
 </header>
 
-<!-- KANBAN VIEW -->
-<div id="view-kanban">
+<nav class="tabbar">
+  <button class="tab-btn active" id="tab-btn-pending" onclick="switchTab('pending')">
+    Pending Airtable upload <span class="tab-count" id="tab-count-pending">0</span>
+  </button>
+  <button class="tab-btn" id="tab-btn-recent" onclick="switchTab('recent')">
+    Recently saved <span class="tab-sub">(last 7 days)</span> <span class="tab-count" id="tab-count-recent">0</span>
+  </button>
+</nav>
+
+<!-- DASHBOARD VIEW -->
+<div id="view-dashboard">
   <div class="global-loading" id="global-loading">
     <i class="ti ti-loader spin" style="font-size:24px;color:var(--text-3)"></i>
     <span style="font-size:13px;color:var(--text-3)">Loading contracts from SharePoint…</span>
@@ -156,31 +167,14 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:v
     <i class="ti ti-alert-circle"></i>
     <div><strong>Couldn't load contracts.</strong> Check that the n8n webhook is active, then <a href="#" onclick="loadContracts();return false" style="color:var(--coral)">try again</a>.</div>
   </div>
-  <div class="kanban" id="kanban" style="display:none">
-    <div class="col">
-      <div class="col-head">
-        <span class="col-dot" style="background:var(--unsigned-dot)"></span>
-        <span class="col-name">Not yet signed</span>
-        <span class="col-badge" id="count-unsigned">0</span>
-      </div>
-      <div class="col-body" id="col-unsigned"></div>
-    </div>
-    <div class="col">
-      <div class="col-head">
-        <span class="col-dot" style="background:var(--coral)"></span>
-        <span class="col-name">Signed — pending review</span>
-        <span class="col-badge" id="count-pending">0</span>
-      </div>
-      <div class="col-body" id="col-pending"></div>
-    </div>
-    <div class="col">
-      <div class="col-head">
-        <span class="col-dot" style="background:var(--done-dot)"></span>
-        <span class="col-name">In Airtable</span>
-        <span class="col-badge" id="count-done">0</span>
-      </div>
-      <div class="col-body" id="col-done"></div>
-    </div>
+
+  <div class="tab-panel" id="view-pending">
+    <div class="pending-grid" id="col-pending"></div>
+  </div>
+
+  <div class="tab-panel" id="view-recent" style="display:none">
+    <div class="recent-note">Contracts saved to Airtable in the last 7 days — a quick sanity check that recent approvals actually landed.</div>
+    <div class="recent-grid" id="col-recent"></div>
   </div>
 </div>
 
@@ -290,19 +284,22 @@ const CONFIG = {
   }
 };
 
-let state = { unsigned: [], pending: [], done: [] };
+const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+let state = { pending: [], done: [] };
 let currentContract = null;
+let activeTab = 'pending';
 
 async function loadContracts() {
   setLoading(true);
   document.getElementById('global-error').classList.remove('show');
-  document.getElementById('kanban').style.display = 'none';
   try {
     const res = await fetch(CONFIG.webhooks.contracts);
     if (!res.ok) throw new Error(res.status);
     state = await res.json();
-    renderKanban();
-    document.getElementById('kanban').style.display = 'grid';
+    state.pending = state.pending || [];
+    state.done = state.done || [];
+    render();
     document.getElementById('stamp').textContent = 'Refreshed ' + new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
   } catch(e) {
     document.getElementById('global-error').classList.add('show');
@@ -316,24 +313,42 @@ function setLoading(on) {
   document.getElementById('btn-refresh').disabled = on;
 }
 
-function renderKanban() {
-  renderCol('unsigned', state.unsigned);
-  renderCol('pending', state.pending);
-  renderCol('done', state.done);
+function switchTab(name) {
+  activeTab = name;
+  document.getElementById('tab-btn-pending').classList.toggle('active', name === 'pending');
+  document.getElementById('tab-btn-recent').classList.toggle('active', name === 'recent');
+  document.getElementById('view-pending').style.display = name === 'pending' ? 'block' : 'none';
+  document.getElementById('view-recent').style.display = name === 'recent' ? 'block' : 'none';
 }
 
-function renderCol(type, items) {
-  document.getElementById('count-' + type).textContent = items.length;
-  const body = document.getElementById('col-' + type);
+function recentlySaved() {
+  const cutoff = Date.now() - RECENT_WINDOW_MS;
+  return state.done
+    .filter(c => c.approvedDate && new Date(c.approvedDate).getTime() >= cutoff)
+    .sort((a, b) => new Date(b.approvedDate) - new Date(a.approvedDate));
+}
+
+function render() {
+  renderGrid('col-pending', 'pending-grid', state.pending, 'pending', 'No contracts pending Airtable upload');
+  const recent = recentlySaved();
+  renderGrid('col-recent', 'recent-grid', recent, 'done', 'No contracts saved to Airtable in the last 7 days');
+  document.getElementById('tab-count-pending').textContent = state.pending.length;
+  document.getElementById('tab-count-recent').textContent = recent.length;
+
+  if (state.pending.some(c => c.status === 'extracting')) {
+    state.pending.filter(c => c.status === 'extracting').forEach(c => triggerExtraction(c));
+  }
+}
+
+function renderGrid(bodyId, gridClass, items, type, emptyMsg) {
+  const body = document.getElementById(bodyId);
+  body.classList.toggle('show', true);
   body.innerHTML = '';
   if (!items.length) {
-    body.innerHTML = '<div class="col-empty">No contracts</div>';
+    body.innerHTML = `<div class="grid-empty">${esc(emptyMsg)}</div>`;
     return;
   }
   items.forEach(c => body.appendChild(buildCard(c, type)));
-  if (type === 'pending') {
-    items.filter(c => c.status === 'extracting').forEach(c => triggerExtraction(c));
-  }
 }
 
 function buildCard(c, type) {
@@ -355,15 +370,18 @@ function buildCard(c, type) {
         <button class="btn-review" onclick="openReview('${esc(c.id)}')">Review &amp; approve</button>
       </div>`;
   } else if (type === 'done') {
+    const savedLabel = c.approvedDate
+      ? new Date(c.approvedDate).toLocaleDateString('en-US', {month:'short', day:'numeric'})
+      : '';
     div.innerHTML = `
       <div class="card-fn">${esc(c.filename)}</div>
-      <div class="card-co">${esc(c.counterparty || '')}</div>
-      <div class="card-meta"><span class="chip chip-type">${esc(c.contractType || '')}</span><span class="chip-date">Approved ${esc(c.approvedDate || '')}</span></div>`;
+      <div class="card-co${c.counterparty ? '' : ' placeholder'}">${esc(c.counterparty || 'Counterparty not linked')}</div>
+      <div class="card-meta"><span class="chip chip-type">${esc(c.contractType || '')}</span><span class="chip-date">Saved ${esc(savedLabel)}</span></div>`;
   } else {
     div.innerHTML = `
       <div class="card-fn">${esc(c.filename)}</div>
-      <div class="card-co placeholder">Awaiting signature</div>
-      <div class="card-meta"><span class="chip chip-type">${esc(c.contractType || '')}</span><span class="chip-date">Modified ${esc(c.modified || '')}</span></div>`;
+      <div class="card-co placeholder">Extraction failed — retry on refresh</div>
+      <div class="card-meta"><span class="chip-date">Modified ${esc(c.modified || '')}</span></div>`;
   }
   return div;
 }
@@ -381,10 +399,7 @@ async function triggerExtraction(contract) {
     if (idx > -1) {
       state.pending[idx] = { ...state.pending[idx], status: 'ready', ...fields };
       const card = document.getElementById('card-' + contract.id);
-      if (card) {
-        const updated = buildCard(state.pending[idx], 'pending');
-        card.replaceWith(updated);
-      }
+      if (card) card.replaceWith(buildCard(state.pending[idx], 'pending'));
     }
   } catch(e) {
     const card = document.getElementById('card-' + contract.id);
@@ -418,14 +433,15 @@ function openReview(id) {
   setSelect('f-autorenew', f.autoRenew);
   setSelect('f-inforce', f.contractInForce);
   setValue('f-link', f.sharepointUrl);
-  document.getElementById('view-kanban').style.display = 'none';
+  document.getElementById('view-dashboard').style.display = 'none';
   document.getElementById('view-review').style.display = 'block';
   window.scrollTo(0, 0);
 }
 
 function closeReview() {
-  document.getElementById('view-kanban').style.display = 'block';
+  document.getElementById('view-dashboard').style.display = 'block';
   document.getElementById('view-review').style.display = 'none';
+  switchTab(activeTab);
   currentContract = null;
 }
 
@@ -433,6 +449,8 @@ async function approveContract() {
   const btn = document.getElementById('btn-approve');
   btn.disabled = true;
   btn.innerHTML = '<i class="ti ti-loader spin" aria-hidden="true"></i> Saving to Airtable…';
+  // Everything read from the form here reflects whatever the reviewer edited —
+  // that's what gets sent to Airtable, not the raw AI extraction.
   const payload = {
     id: currentContract.id,
     filename: currentContract.filename,
@@ -463,9 +481,9 @@ async function approveContract() {
     if (!res.ok) throw new Error(res.status);
     const counterparty = payload.counterparty || currentContract.filename;
     state.pending = state.pending.filter(c => c.id !== currentContract.id);
-    state.done.unshift({ ...payload, approvedDate: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
+    state.done.unshift({ ...payload, approvedDate: new Date().toISOString() });
     closeReview();
-    renderKanban();
+    render();
     showToast(counterparty + ' saved to Airtable');
   } catch(e) {
     showToast('Save failed — check n8n webhook and try again', true);
