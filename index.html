@@ -87,6 +87,9 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:v
 .card.pending::before{background:var(--coral)}
 .card.done::before{background:var(--done-dot)}
 .card.done{opacity:.85}
+.card.pending{padding-right:1.75rem}
+.card-remove{position:absolute;top:6px;right:6px;background:transparent;border:none;color:var(--text-3);font-size:13px;line-height:1;cursor:pointer;padding:3px 6px;border-radius:4px;font-family:inherit}
+.card-remove:hover{background:var(--bg);color:var(--coral)}
 .card-fn{font-family:'SF Mono','Cascadia Code','Fira Mono',monospace;font-size:10.5px;color:var(--text-3);line-height:1.4;word-break:break-all;margin-bottom:.35rem}
 .card-co{font-size:13px;font-weight:600;color:var(--text);margin-bottom:.2rem}
 .card-co.placeholder{color:var(--text-3);font-weight:400;font-style:italic}
@@ -389,11 +392,13 @@ function buildCard(c, type) {
   div.id = 'card-' + c.id;
   if (type === 'pending' && c.status === 'extracting') {
     div.innerHTML = `
+      <button class="card-remove" title="Remove from pending" onclick="removeFromPending('${esc(c.id)}')">✕</button>
       <div class="card-fn">${esc(c.filename)}</div>
       <div class="skel s80"></div><div class="skel s60"></div>
       <div class="extracting-tag"><i class="ti ti-cpu" aria-hidden="true" style="font-size:12px"></i>Extracting fields<span class="dots"><span></span><span></span><span></span></span></div>`;
   } else if (type === 'pending' && c.status === 'ready') {
     div.innerHTML = `
+      <button class="card-remove" title="Remove from pending" onclick="removeFromPending('${esc(c.id)}')">✕</button>
       <div class="card-fn">${esc(c.filename)}</div>
       <div class="card-co">${esc(c.counterparty || c.filename)}</div>
       <div class="card-meta"><span class="chip chip-type">${esc(c.contractType || '')}</span><span class="chip-date">Modified ${esc(c.modified || '')}</span></div>
@@ -411,11 +416,18 @@ function buildCard(c, type) {
       <div class="card-meta"><span class="chip chip-type">${esc(c.contractType || '')}</span><span class="chip-date">Saved ${esc(savedLabel)}</span></div>`;
   } else {
     div.innerHTML = `
+      <button class="card-remove" title="Remove from pending" onclick="removeFromPending('${esc(c.id)}')">✕</button>
       <div class="card-fn">${esc(c.filename)}</div>
       <div class="card-co placeholder">Extraction failed — retry on refresh</div>
       <div class="card-meta"><span class="chip-date">Modified ${esc(c.modified || '')}</span></div>`;
   }
   return div;
+}
+
+function removeFromPending(id) {
+  state.pending = state.pending.filter(c => c.id !== id);
+  render();
+  showToast('Removed from pending');
 }
 
 async function searchManualContract() {
