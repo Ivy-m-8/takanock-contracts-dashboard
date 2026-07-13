@@ -60,6 +60,26 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:v
 .pending-grid.show,.recent-grid.show{display:grid}
 .grid-empty{font-size:12px;color:var(--text-3);text-align:center;padding:2.5rem .75rem}
 
+/* Manual override */
+.manual-override{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.75rem .875rem;margin-bottom:.875rem}
+.manual-override-label{font-size:12px;color:var(--text-2);margin-bottom:.5rem}
+.manual-override-row{display:flex;gap:.5rem}
+.manual-override-row input{flex:1;border:1px solid var(--border-strong);border-radius:4px;padding:6px 10px;font-size:13px;font-family:inherit;background:var(--surface-alt);color:var(--text)}
+.manual-override-row input:focus{outline:none;border-color:var(--coral);box-shadow:0 0 0 2px rgba(232,80,42,.1);background:#fff}
+.btn-manual-search{background:var(--navy);color:#fff;border:none;padding:6px 14px;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.btn-manual-search:hover:not(:disabled){background:var(--navy-mid)}
+.btn-manual-search:disabled{opacity:.6;cursor:not-allowed}
+#manual-results{margin-top:.625rem;display:flex;flex-direction:column;gap:.375rem}
+.manual-result{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.5rem .625rem;border:1px solid var(--border);border-radius:4px;background:var(--surface-alt)}
+.manual-result-info{overflow:hidden;min-width:0}
+.manual-result-fn{font-family:'SF Mono','Cascadia Code','Fira Mono',monospace;font-size:10.5px;color:var(--text-2);word-break:break-all}
+.manual-result-meta{color:var(--text-3);font-size:10.5px;margin-top:2px}
+.manual-result-warn{color:var(--coral);font-weight:600}
+.btn-manual-add{background:var(--coral);color:#fff;border:none;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0}
+.btn-manual-add:hover:not(:disabled){background:#c9421f}
+.btn-manual-add:disabled{opacity:.5;cursor:not-allowed;background:var(--text-3)}
+.manual-empty{font-size:12px;color:var(--text-3);padding:.375rem 0}
+
 /* Cards */
 .card{border:1px solid var(--border);border-radius:var(--radius);padding:.75rem;background:var(--surface);position:relative;overflow:hidden;transition:box-shadow .15s,opacity .3s}
 .card:hover{box-shadow:var(--shadow)}
@@ -169,6 +189,16 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:v
   </div>
 
   <div class="tab-panel" id="view-pending">
+    <div class="manual-override">
+      <div class="manual-override-label">Signed contract not showing up above? Search SharePoint by file name and send it to review manually.</div>
+      <div class="manual-override-row">
+        <input type="text" id="manual-search-input" placeholder="Type part of the contract file name…" onkeydown="if(event.key==='Enter'){event.preventDefault();searchManualContract();}">
+        <button class="btn-manual-search" id="btn-manual-search" onclick="searchManualContract()">
+          <i class="ti ti-search" aria-hidden="true"></i>Search
+        </button>
+      </div>
+      <div id="manual-results"></div>
+    </div>
     <div class="pending-grid" id="col-pending"></div>
   </div>
 
@@ -281,6 +311,7 @@ const CONFIG = {
     contracts: 'https://takanock.app.n8n.cloud/webhook/dashboard-contracts',
     extract:   'https://takanock.app.n8n.cloud/webhook/dashboard-extract',
     approve:   'https://takanock.app.n8n.cloud/webhook/dashboard-approve',
+    find:      'https://takanock.app.n8n.cloud/webhook/dashboard-find-contract',
   }
 };
 
@@ -289,6 +320,7 @@ const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 let state = { pending: [], done: [] };
 let currentContract = null;
 let activeTab = 'pending';
+let lastManualMatches = [];
 
 async function loadContracts() {
   setLoading(true);
@@ -384,6 +416,72 @@ function buildCard(c, type) {
       <div class="card-meta"><span class="chip-date">Modified ${esc(c.modified || '')}</span></div>`;
   }
   return div;
+}
+
+async function searchManualContract() {
+  const q = document.getElementById('manual-search-input').value.trim();
+  const btn = document.getElementById('btn-manual-search');
+  const results = document.getElementById('manual-results');
+  if (!q) {
+    results.innerHTML = '<div class="manual-empty">Type at least part of a file name.</div>';
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader spin" aria-hidden="true"></i>Searching…';
+  results.innerHTML = '<div class="manual-empty">Searching SharePoint…</div>';
+  try {
+    const res = await fetch(CONFIG.webhooks.find + '?q=' + encodeURIComponent(q));
+    if (!res.ok) throw new Error(res.status);
+    lastManualMatches = await res.json();
+    renderManualResults(lastManualMatches);
+  } catch (e) {
+    results.innerHTML = '<div class="manual-empty">Search failed — check the n8n webhook and try again.</div>';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-search" aria-hidden="true"></i>Search';
+  }
+}
+
+function renderManualResults(matches) {
+  const results = document.getElementById('manual-results');
+  results.innerHTML = '';
+  if (!matches.length) {
+    results.innerHTML = '<div class="manual-empty">No matching files found in SharePoint.</div>';
+    return;
+  }
+  matches.forEach((m, i) => {
+    const alreadyPending = state.pending.some(c => c.id === m.driveItemId);
+    const row = document.createElement('div');
+    row.className = 'manual-result';
+    row.innerHTML = `
+      <div class="manual-result-info">
+        <div class="manual-result-fn">${esc(m.filename)}</div>
+        <div class="manual-result-meta">Modified ${esc(m.modified || '')}${m.alreadyInAirtable ? ' <span class="manual-result-warn">· already in Airtable</span>' : ''}</div>
+      </div>
+      <button class="btn-manual-add" ${alreadyPending ? 'disabled' : ''} onclick="addManualContract(${i})">${alreadyPending ? 'In pending' : 'Send to review'}</button>`;
+    results.appendChild(row);
+  });
+}
+
+function addManualContract(i) {
+  const m = lastManualMatches[i];
+  if (!m || state.pending.some(c => c.id === m.driveItemId)) return;
+  state.pending.unshift({
+    id: m.driveItemId,
+    filename: m.filename,
+    sharepointUrl: m.sharepointUrl,
+    driveItemId: m.driveItemId,
+    modified: m.modified,
+    status: 'extracting',
+    contractType: '',
+    counterparty: '',
+    approvedDate: ''
+  });
+  document.getElementById('manual-search-input').value = '';
+  document.getElementById('manual-results').innerHTML = '';
+  switchTab('pending');
+  render();
+  showToast(m.filename + ' added — extracting fields…');
 }
 
 async function triggerExtraction(contract) {
